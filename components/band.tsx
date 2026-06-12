@@ -1,7 +1,7 @@
 import * as THREE from "three";
 import { useEffect, useRef, useState } from "react";
 import { useFrame, ReactThreeFiber, extend } from "@react-three/fiber";
-import { useGLTF, useTexture } from "@react-three/drei";
+import { useGLTF, useTexture, Text } from "@react-three/drei";
 import {
   BallCollider,
   CuboidCollider,
@@ -184,6 +184,16 @@ export default function Band({ maxSpeed = 50, minSpeed = 10 }) {
                 metalness={0.5}
               />
             </mesh>
+            <Text
+              position={[-0.30, 0.10, 0.01]}
+              fontSize={0.06}
+              color="white"
+              anchorX="left"
+              anchorY="bottom"
+              font="https://fonts.gstatic.com/s/inter/v20/UcCO3FwrK3iLTeHuS_nVMrMxCp50SjIw2boKoduKmMEVuFuYMZg.ttf"
+            >
+              Daffa Haidar
+            </Text>
             <mesh
               // @ts-expect-error geometry/map are not declared?
               geometry={nodes.clip.geometry}
