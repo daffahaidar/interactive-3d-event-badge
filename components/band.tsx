@@ -14,18 +14,10 @@ import { MeshLineGeometry, MeshLineMaterial } from "meshline";
 
 extend({ MeshLineGeometry, MeshLineMaterial });
 
-declare global {
-  namespace JSX {
-    interface IntrinsicElements {
-      meshLineGeometry: ReactThreeFiber.Object3DNode<
-        MeshLineGeometry,
-        typeof MeshLineGeometry
-      >;
-      meshLineMaterial: ReactThreeFiber.Object3DNode<
-        MeshLineMaterial,
-        typeof MeshLineMaterial
-      >;
-    }
+declare module "@react-three/fiber" {
+  interface ThreeElements {
+    meshLineGeometry: any;
+    meshLineMaterial: any;
   }
 }
 
@@ -39,12 +31,12 @@ const segmentProps = {
 
 export default function Band({ maxSpeed = 50, minSpeed = 10 }) {
   const band = useRef<THREE.Mesh<MeshLineGeometry, MeshLineMaterial>>(null);
-  const fixed = useRef<RapierRigidBody>(null);
-  const j1 = useRef<RapierRigidBody>(null);
-  const j2 = useRef<RapierRigidBody>(null);
-  const j3 = useRef<RapierRigidBody>(null);
+  const fixed = useRef<RapierRigidBody>(null!);
+  const j1 = useRef<RapierRigidBody>(null!);
+  const j2 = useRef<RapierRigidBody>(null!);
+  const j3 = useRef<RapierRigidBody>(null!);
 
-  const card = useRef<RapierRigidBody>(null);
+  const card = useRef<RapierRigidBody>(null!);
   const vec = new THREE.Vector3();
   const ang = new THREE.Vector3();
   const rot = new THREE.Vector3();

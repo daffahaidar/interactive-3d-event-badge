@@ -14,9 +14,26 @@ extend({ MeshLineGeometry, MeshLineMaterial });
 useGLTF.preload("/assets/3d/card.glb");
 useTexture.preload("/assets/images/tag_texture.png");
 
+if (typeof window !== "undefined") {
+  const originalWarn = console.warn;
+  console.warn = (...args: any[]) => {
+    const msg = args[0];
+    if (typeof msg === "string") {
+      if (
+        msg.includes("THREE.Clock") ||
+        msg.includes("deprecated parameters") ||
+        msg.includes("THREE.WebGLProgram")
+      ) {
+        return;
+      }
+    }
+    originalWarn(...args);
+  };
+}
+
 export default function Register() {
   return (
-    <div className="relative h-screen w-full">
+    <div className="relative h-screen w-full bg-white">
       <div className="flex h-screen w-full ">
         <Canvas
           camera={{ position: [0, 0, 13], fov: 25 }}
@@ -31,7 +48,7 @@ export default function Register() {
           >
             <Band />
           </Physics>
-          <Environment background blur={0.75}>
+          <Environment blur={0.75}>
             <Lightformer
               intensity={2}
               color="white"
