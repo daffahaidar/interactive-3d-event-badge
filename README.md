@@ -15,7 +15,15 @@ If you find it useful, give this repository a star⭐ as a sign of thanks
 - React Three Fiber
 - Drei
 - React-three-rapier
-- MeshLine
+
+## Customize the card
+
+Replace `public/assets/images/card_texture.png` with your own design. Keep the layout of the
+included file: card front on the left half, card back on the right half (1080×1080). Delete the
+file to get a plain white card.
+
+The name on the card front comes from `<Band name="..." />` in `app/page.tsx`. Remove the `name`
+prop if your texture already includes the name.
 
 ## Installation
 

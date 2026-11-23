@@ -1,5 +1,5 @@
 import * as THREE from "three";
-import { useEffect, useRef, useState } from "react";
+import { use, useEffect, useRef, useState } from "react";
 import { useFrame, ReactThreeFiber } from "@react-three/fiber";
 import { useGLTF, useTexture, Text } from "@react-three/drei";
 import {
@@ -18,6 +18,19 @@ const segmentProps = {
   angularDamping: 2,
   linearDamping: 2,
 } as const;
+
+// Card skin: same UV layout as card.glb's own texture (front = left half, back = right half).
+// No file → plain white card.
+let cardSkin: Promise<THREE.Texture | null> | undefined;
+const loadCardSkin = () =>
+  (cardSkin ??= new THREE.TextureLoader()
+    .loadAsync("/assets/images/card_texture.png")
+    .then((t) => {
+      t.flipY = false; // glTF UV convention
+      t.anisotropy = 16;
+      return t;
+    })
+    .catch(() => null));
 
 // The band is a solid 3D strip rebuilt every frame, so it can twist with the card and loop through
 // the ring. Samples run from the stitched end of the loop, around the ring, then up the rope.
@@ -150,7 +163,16 @@ function updateRibbon(
   return twist;
 }
 
-export default function Band({ maxSpeed = 50, minSpeed = 10 }) {
+export default function Band({
+  maxSpeed = 50,
+  minSpeed = 10,
+  name,
+}: {
+  maxSpeed?: number;
+  minSpeed?: number;
+  /** Printed on the card front. Leave it out when card_texture.png already has the name. */
+  name?: string;
+}) {
   const fixed = useRef<RapierRigidBody>(null!);
   const j1 = useRef<RapierRigidBody>(null!);
   const j2 = useRef<RapierRigidBody>(null!);
@@ -166,6 +188,7 @@ export default function Band({ maxSpeed = 50, minSpeed = 10 }) {
   const [dragged, drag] = useState<THREE.Vector3 | false>(false);
   const [hovered, hover] = useState(false);
 
+  const skin = use(loadCardSkin());
   const { nodes, materials } = useGLTF("/assets/3d/card.glb");
   const texture = useTexture("/assets/images/tag_texture.png", (t) => {
     t.wrapS = t.wrapT = THREE.RepeatWrapping;
@@ -301,25 +324,25 @@ export default function Band({ maxSpeed = 50, minSpeed = 10 }) {
             {/* @ts-expect-error geometry/map are not declared? */}
             <mesh geometry={nodes.card.geometry}>
               <meshPhysicalMaterial
-                // @ts-expect-error geometry/map are not declared?
-                map={materials.base.map}
-                map-anisotropy={16}
+                map={skin}
                 clearcoat={1}
                 clearcoatRoughness={0.15}
                 roughness={0.3}
                 metalness={0.5}
               />
             </mesh>
-            <Text
-              position={[-0.30, 0.10, 0.01]}
-              fontSize={0.06}
-              color="white"
-              anchorX="left"
-              anchorY="bottom"
-              font="https://fonts.gstatic.com/s/inter/v20/UcCO3FwrK3iLTeHuS_nVMrMxCp50SjIw2boKoduKmMEVuFuYMZg.ttf"
-            >
-              Daffa Haidar
-            </Text>
+            {name && (
+              <Text
+                position={[-0.30, 0.10, 0.01]}
+                fontSize={0.06}
+                color="white"
+                anchorX="left"
+                anchorY="bottom"
+                font="https://fonts.gstatic.com/s/inter/v20/UcCO3FwrK3iLTeHuS_nVMrMxCp50SjIw2boKoduKmMEVuFuYMZg.ttf"
+              >
+                {name}
+              </Text>
+            )}
             <mesh
               // @ts-expect-error geometry/map are not declared?
               geometry={nodes.clip.geometry}

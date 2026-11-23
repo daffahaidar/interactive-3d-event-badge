@@ -44,7 +44,7 @@ export default function Register() {
             gravity={[0, -40, 0]}
             timeStep={1 / 60}
           >
-            <Band />
+            <Band name="Daffa Haidar" />
           </Physics>
           <Environment blur={0.75}>
             <Lightformer
