@@ -45,16 +45,22 @@ export default function Band({ maxSpeed = 50, minSpeed = 10 }) {
   const [hovered, hover] = useState(false);
 
   const { nodes, materials } = useGLTF("/assets/3d/card.glb");
-  const texture = useTexture("/assets/images/tag_texture.png");
+  const texture = useTexture("/assets/images/tag_texture.png", (t) => {
+    t.wrapS = t.wrapT = THREE.RepeatWrapping;
+  });
 
   const [curve] = useState(
     () =>
-      new THREE.CatmullRomCurve3([
-        new THREE.Vector3(),
-        new THREE.Vector3(),
-        new THREE.Vector3(),
-        new THREE.Vector3(),
-      ])
+      new THREE.CatmullRomCurve3(
+        [
+          new THREE.Vector3(),
+          new THREE.Vector3(),
+          new THREE.Vector3(),
+          new THREE.Vector3(),
+        ],
+        false,
+        "chordal"
+      )
   );
 
   useRopeJoint(fixed, j1, [[0, 0, 0], [0, 0, 0], 1]);
@@ -128,9 +134,6 @@ export default function Band({ maxSpeed = 50, minSpeed = 10 }) {
       );
     }
   });
-
-  curve.curveType = "chordal";
-  texture.wrapS = texture.wrapT = THREE.RepeatWrapping;
 
   return (
     <>
