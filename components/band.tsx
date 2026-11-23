@@ -1,6 +1,6 @@
 import * as THREE from "three";
 import { useEffect, useRef, useState } from "react";
-import { useFrame, ReactThreeFiber, extend } from "@react-three/fiber";
+import { useFrame, ReactThreeFiber } from "@react-three/fiber";
 import { useGLTF, useTexture, Text } from "@react-three/drei";
 import {
   BallCollider,
@@ -10,16 +10,6 @@ import {
   useSphericalJoint,
   RapierRigidBody,
 } from "@react-three/rapier";
-import { MeshLineGeometry, MeshLineMaterial } from "meshline";
-
-extend({ MeshLineGeometry, MeshLineMaterial });
-
-declare module "@react-three/fiber" {
-  interface ThreeElements {
-    meshLineGeometry: any;
-    meshLineMaterial: any;
-  }
-}
 
 const segmentProps = {
   type: "dynamic",
@@ -29,14 +19,93 @@ const segmentProps = {
   linearDamping: 2,
 } as const;
 
+// The band is a flat 3D ribbon rebuilt every frame, so it can twist with the card.
+const SEGMENTS = 64;
+const HALF_WIDTH = 0.11; // same width the old meshline band had
+const TOWARD_CAMERA = new THREE.Vector3(0, 0, 1);
+const points = Array.from({ length: SEGMENTS }, () => new THREE.Vector3());
+const tangents = Array.from({ length: SEGMENTS }, () => new THREE.Vector3());
+const sides = Array.from({ length: SEGMENTS }, () => new THREE.Vector3());
+const lengths = new Float32Array(SEGMENTS);
+const cardRotation = new THREE.Quaternion();
+const _q = new THREE.Quaternion();
+const _v = new THREE.Vector3();
+const _n = new THREE.Vector3();
+
+function createRibbon() {
+  const geometry = new THREE.BufferGeometry();
+  geometry.setAttribute("position", new THREE.BufferAttribute(new Float32Array(SEGMENTS * 6), 3));
+  geometry.setAttribute("normal", new THREE.BufferAttribute(new Float32Array(SEGMENTS * 6), 3));
+  geometry.setAttribute("uv", new THREE.BufferAttribute(new Float32Array(SEGMENTS * 4), 2));
+  const index: number[] = [];
+  for (let i = 0; i < SEGMENTS - 1; i++) {
+    const a = i * 2; // vertices a / a+1 = left / right edge of sample i
+    index.push(a, a + 1, a + 2, a + 1, a + 3, a + 2);
+  }
+  geometry.setIndex(index);
+  return geometry;
+}
+
+/**
+ * Lays the ribbon along `curve` (t=0 at the card clip, t=1 at the fixed top). The width axis faces
+ * the camera at the top, is parallel-transported down the band, then twisted gradually so at the
+ * clip it matches the card's X axis. Returns the twist, unwrapped against the previous frame so a
+ * full spin keeps winding the band (like a real lanyard) instead of snapping back.
+ */
+function updateRibbon(
+  geometry: THREE.BufferGeometry,
+  curve: THREE.Curve<THREE.Vector3>,
+  cardQuaternion: THREE.Quaternion,
+  prevTwist: number
+) {
+  const last = SEGMENTS - 1;
+  for (let i = 0; i <= last; i++) curve.getPoint(i / last, points[i]);
+  for (let i = 0; i <= last; i++) {
+    tangents[i].subVectors(points[Math.min(i + 1, last)], points[Math.max(i - 1, 0)]).normalize();
+    lengths[i] = i === 0 ? 0 : lengths[i - 1] + points[i].distanceTo(points[i - 1]);
+  }
+
+  sides[last].crossVectors(tangents[last], TOWARD_CAMERA).normalize();
+  for (let i = last - 1; i >= 0; i--)
+    sides[i].copy(sides[i + 1]).applyQuaternion(_q.setFromUnitVectors(tangents[i + 1], tangents[i]));
+
+  let twist = prevTwist;
+  _v.set(1, 0, 0).applyQuaternion(cardQuaternion).projectOnPlane(tangents[0]);
+  if (_v.lengthSq() > 1e-6) {
+    // (skipped for the instant the band runs exactly along the card's X axis)
+    const raw = Math.atan2(_n.crossVectors(sides[0], _v).dot(tangents[0]), sides[0].dot(_v));
+    twist = raw + 2 * Math.PI * Math.round((prevTwist - raw) / (2 * Math.PI));
+  }
+
+  const position = geometry.getAttribute("position") as THREE.BufferAttribute;
+  const normal = geometry.getAttribute("normal") as THREE.BufferAttribute;
+  const uv = geometry.getAttribute("uv") as THREE.BufferAttribute;
+  for (let i = 0; i <= last; i++) {
+    const p = points[i];
+    const s = sides[i].applyAxisAngle(tangents[i], twist * (1 - i / last)).multiplyScalar(HALF_WIDTH);
+    _n.crossVectors(s, tangents[i]).normalize();
+    const u = (-3 * lengths[i]) / (lengths[last] || 1); // texture repeats 3x along the band, as before
+    position.setXYZ(2 * i, p.x - s.x, p.y - s.y, p.z - s.z);
+    position.setXYZ(2 * i + 1, p.x + s.x, p.y + s.y, p.z + s.z);
+    normal.setXYZ(2 * i, _n.x, _n.y, _n.z);
+    normal.setXYZ(2 * i + 1, _n.x, _n.y, _n.z);
+    uv.setXY(2 * i, u, 0);
+    uv.setXY(2 * i + 1, u, 1);
+  }
+  position.needsUpdate = normal.needsUpdate = uv.needsUpdate = true;
+  return twist;
+}
+
 export default function Band({ maxSpeed = 50, minSpeed = 10 }) {
-  const band = useRef<THREE.Mesh<MeshLineGeometry, MeshLineMaterial>>(null);
   const fixed = useRef<RapierRigidBody>(null!);
   const j1 = useRef<RapierRigidBody>(null!);
   const j2 = useRef<RapierRigidBody>(null!);
   const j3 = useRef<RapierRigidBody>(null!);
 
   const card = useRef<RapierRigidBody>(null!);
+  const anchor = useRef<THREE.Object3D>(null!);
+  const twist = useRef(0);
+  const [ribbon] = useState(createRibbon);
   const vec = new THREE.Vector3();
   const ang = new THREE.Vector3();
   const rot = new THREE.Vector3();
@@ -47,6 +116,11 @@ export default function Band({ maxSpeed = 50, minSpeed = 10 }) {
   const { nodes, materials } = useGLTF("/assets/3d/card.glb");
   const texture = useTexture("/assets/images/tag_texture.png", (t) => {
     t.wrapS = t.wrapT = THREE.RepeatWrapping;
+  });
+  const [backTexture] = useState(() => {
+    const t = texture.clone();
+    t.repeat.y = -1; // flip across the width so the print isn't mirrored when seen from behind
+    return t;
   });
 
   const [curve] = useState(
@@ -85,8 +159,7 @@ export default function Band({ maxSpeed = 50, minSpeed = 10 }) {
       !fixed.current ||
       !j1.current ||
       !j2.current ||
-      !j3.current ||
-      !band.current ||
+      !anchor.current ||
       !card.current
     )
       return;
@@ -120,11 +193,18 @@ export default function Band({ maxSpeed = 50, minSpeed = 10 }) {
         }
       });
 
-      curve.points[0].copy(j3.current.translation());
+      // Rendered (interpolated) clip position, not raw j3: with `interpolate` the card is drawn
+      // up to one physics step behind j3, which pulled the band off the clip while swinging.
+      anchor.current.getWorldPosition(curve.points[0]);
       curve.points[1].copy(j2Lerped ?? j2.current.translation());
       curve.points[2].copy(j1Lerped ?? j1.current.translation());
       curve.points[3].copy(fixed.current.translation());
-      band.current.geometry.setPoints(curve.getPoints(32));
+      twist.current = updateRibbon(
+        ribbon,
+        curve,
+        anchor.current.getWorldQuaternion(cardRotation),
+        twist.current
+      );
 
       ang.copy(card.current.angvel());
       rot.copy(card.current.rotation());
@@ -156,6 +236,8 @@ export default function Band({ maxSpeed = 50, minSpeed = 10 }) {
           type={dragged ? "kinematicPosition" : "dynamic"}
         >
           <CuboidCollider args={[0.8, 1.125, 0.01]} />
+          {/* Band end, same point as the spherical joint anchor above */}
+          <object3D ref={anchor} position={[0, 1.45, 0]} />
           <group
             scale={2.25}
             position={[0, -1.25, -0.05]}
@@ -208,17 +290,12 @@ export default function Band({ maxSpeed = 50, minSpeed = 10 }) {
           </group>
         </RigidBody>
       </group>
-      <mesh ref={band}>
-        <meshLineGeometry />
-        <meshLineMaterial
-          color="white"
-          depthTest={false}
-          resolution={new THREE.Vector2(2, 1)}
-          useMap={1}
-          map={texture}
-          repeat={new THREE.Vector2(-3, 1)}
-          lineWidth={1}
-        />
+      {/* Same ribbon geometry twice: front and back face, each with its own texture */}
+      <mesh geometry={ribbon} frustumCulled={false}>
+        <meshStandardMaterial map={texture} />
+      </mesh>
+      <mesh geometry={ribbon} frustumCulled={false}>
+        <meshStandardMaterial map={backTexture} side={THREE.BackSide} />
       </mesh>
     </>
   );

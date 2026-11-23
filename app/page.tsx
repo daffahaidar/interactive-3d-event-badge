@@ -1,5 +1,5 @@
 "use client";
-import { Canvas, extend } from "@react-three/fiber";
+import { Canvas } from "@react-three/fiber";
 import {
   useGLTF,
   useTexture,
@@ -7,10 +7,8 @@ import {
   Lightformer,
 } from "@react-three/drei";
 import { Physics } from "@react-three/rapier";
-import { MeshLineGeometry, MeshLineMaterial } from "meshline";
 import Band from "@/components/band";
 
-extend({ MeshLineGeometry, MeshLineMaterial });
 useGLTF.preload("/assets/3d/card.glb");
 useTexture.preload("/assets/images/tag_texture.png");
 
