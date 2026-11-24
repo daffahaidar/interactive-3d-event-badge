@@ -122,6 +122,8 @@ visible on the plain white card. Change its font, color or position in the `<Tex
   height spans the band's width. The left edge points up toward the neck.
 - **Repeat:** the image repeats 3 times along the band and is stretched to fit, so the exact ratio is
   not critical. To change the count, edit the `-3` in `updateRibbon` in `components/band.tsx`.
+- **Rivet:** leave a blank gap in the design. `PRINT_GAP` in `components/band.tsx` is where that gap
+  sits across the image's width (0 = left edge, 1 = right edge); that spot is kept under the rivet.
 - **Edges:** the top and bottom rows of pixels color the thin edges of the band. Keep them plain.
 - **Both sides:** the print reads correctly on both sides of the band.
 
@@ -142,6 +144,8 @@ These constants are at the top of `components/band.tsx`:
 | `HALF_WIDTH`     | `0.11`  | Half the width of the band                          |
 | `HALF_THICKNESS` | `0.006` | Half the thickness of the band                      |
 | `TORSION`        | `7.5`   | How strongly a twisted band turns the card back     |
+| `GRIP`           | `25`    | How tightly a dragged card follows the pointer      |
+| `RIVET_RUN`      | `0.05`  | Length of the riveted overlap above the ring        |
 
 Camera, lights and gravity are set in `app/page.tsx`.
 

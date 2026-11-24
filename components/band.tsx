@@ -41,25 +41,38 @@ const SAMPLES = ATTACH + FREE_SAMPLES;
 const HALF_WIDTH = 0.11; // same width the old meshline band had
 const HALF_THICKNESS = 0.006;
 const TORSION = 7.5; // rad/s² per radian of twist (old "face the screen" pull had this stiffness)
+const GRIP = 25; // 1/s: how fast the grabbed point catches up with the pointer (lower = looser hold)
 const TOWARD_CAMERA = new THREE.Vector3(0, 0, 1);
 
 // Loop around the ring's top bar, in card.glb model space (clip mesh: bar centre y≈1.224 z=0,
 // ±0.024 deep, lowest y≈1.211 under the band edges), leaving room for the band's thickness.
 // Starts at the stitched end behind the band, goes down, under the bar and back up the front.
-const LOOP = new THREE.CatmullRomCurve3(
-  [
-    new THREE.Vector3(0, 1.3, 0.0223),
-    new THREE.Vector3(0, 1.25, -0.0226),
-    new THREE.Vector3(0, 1.2237, -0.0282),
-    new THREE.Vector3(0, 1.2067, 0),
-    new THREE.Vector3(0, 1.2237, 0.0282),
-    new THREE.Vector3(0, 1.26, 0.0282),
-    new THREE.Vector3(0, 1.3, 0.0282),
-  ],
-  false,
-  "centripetal"
-).getPoints(ATTACH);
-const LOOP_EXIT = new THREE.Vector3(0, 1.36, 0.0282); // makes the band leave the loop straight up
+// Above y=1.3 both layers run flat together for RIVET_RUN, where the rivet holds them (straight
+// samples: a spline through there bulges the back layer into the front one).
+const RIVET_RUN = 0.05;
+const LOOP = [
+  new THREE.Vector3(0, 1.3 + RIVET_RUN, 0.0223),
+  ...new THREE.CatmullRomCurve3(
+    [
+      new THREE.Vector3(0, 1.3, 0.0223),
+      new THREE.Vector3(0, 1.25, -0.0226),
+      new THREE.Vector3(0, 1.2237, -0.0282),
+      new THREE.Vector3(0, 1.2067, 0),
+      new THREE.Vector3(0, 1.2237, 0.0282),
+      new THREE.Vector3(0, 1.26, 0.0282),
+      new THREE.Vector3(0, 1.3, 0.0282),
+    ],
+    false,
+    "centripetal"
+  ).getPoints(ATTACH - 2),
+  new THREE.Vector3(0, 1.3 + RIVET_RUN, 0.0282),
+];
+const LOOP_EXIT = new THREE.Vector3(0, 1.36 + RIVET_RUN, 0.0282); // band leaves the loop straight up
+// Rivet through both layers, centred between them so its dome shows on the front and back.
+const RIVET_POSITION = new THREE.Vector3(0, 1.3 + RIVET_RUN / 2, (0.0223 + 0.0282) / 2);
+// Spot across tag_texture.png's width (0 = left edge, 1 = right edge) that sits under the rivet:
+// the middle of its blank gap, so the rivet isn't punched through the print.
+const PRINT_GAP = 0.75;
 
 // Vertices per sample: [corner, normal from face (0) or side (1), normal sign, v]. Corners are
 // front-left, front-right, back-left, back-right; back face v is flipped so its print reads right.
@@ -139,6 +152,7 @@ function updateRibbon(
     sides[i].applyAxisAngle(tangents[i], twist * (1 - (i - ATTACH) / (last - ATTACH)));
   for (let i = 0; i < ATTACH; i++) sides[i].copy(cardX); // the loop is rigid with the card
 
+  const rivetAt = (lengths[ATTACH - 1] + lengths[ATTACH]) / 2; // rivet is midway up the flat run
   const position = geometry.getAttribute("position") as THREE.BufferAttribute;
   const normal = geometry.getAttribute("normal") as THREE.BufferAttribute;
   const uv = geometry.getAttribute("uv") as THREE.BufferAttribute;
@@ -150,7 +164,8 @@ function updateRibbon(
         .copy(p)
         .addScaledVector(side, c % 2 ? HALF_WIDTH : -HALF_WIDTH)
         .addScaledVector(_n, c < 2 ? HALF_THICKNESS : -HALF_THICKNESS);
-    const u = (-3 * lengths[i]) / (lengths[last] || 1); // texture repeats 3x along the band, as before
+    // texture repeats 3x along the band, as before, pinned so PRINT_GAP stays under the rivet
+    const u = (-3 * (lengths[i] - rivetAt)) / (lengths[last] || 1) + PRINT_GAP;
     for (let k = 0; k < LAYOUT.length; k++) {
       const [c, fromSide, sign, v] = LAYOUT[k];
       const nrm = fromSide ? side : _n;
@@ -241,11 +256,13 @@ export default function Band({
       dir.copy(vec).sub(state.camera.position).normalize();
       vec.add(dir.multiplyScalar(state.camera.position.length()));
       [card, j1, j2, j3, fixed].forEach((ref) => ref.current?.wakeUp());
-      card.current?.setNextKinematicTranslation({
-        x: vec.x - dragged.x,
-        y: vec.y - dragged.y,
-        z: vec.z - dragged.z,
-      });
+      // The card stays dynamic and its grabbed point is pulled toward the pointer, so the strap
+      // still stops it at full length and tilts it, instead of the card sliding around rigid.
+      vec
+        .sub(_v.copy(dragged).applyQuaternion(_q.copy(card.current.rotation())))
+        .sub(card.current.translation());
+      // capped, or a pointer far past the strap's reach yanks hard enough to stretch the strap
+      card.current.setLinvel(vec.clampLength(0, 1).multiplyScalar(GRIP), true);
     }
 
     if (fixed.current) {
@@ -294,12 +311,7 @@ export default function Band({
           <BallCollider args={[0.1]} />
         </RigidBody>
 
-        <RigidBody
-          position={[2, 0, 0]}
-          ref={card}
-          {...segmentProps}
-          type={dragged ? "kinematicPosition" : "dynamic"}
-        >
+        <RigidBody position={[2, 0, 0]} ref={card} {...segmentProps}>
           <CuboidCollider args={[0.8, 1.125, 0.01]} />
           <group
             ref={model}
@@ -315,9 +327,11 @@ export default function Band({
               (e.target as Element)?.setPointerCapture(e.pointerId),
               card.current &&
                 drag(
+                  // grabbed point in card space, so it stays under the pointer as the card turns
                   new THREE.Vector3()
                     .copy(e.point)
-                    .sub(vec.copy(card.current.translation()))
+                    .sub(card.current.translation())
+                    .applyQuaternion(_q.copy(card.current.rotation()).invert())
                 )
             )}
           >
@@ -328,7 +342,7 @@ export default function Band({
                 clearcoat={1}
                 clearcoatRoughness={0.15}
                 roughness={0.3}
-                metalness={0.5}
+                metalness={0.65} // with page.tsx lighting, shows the photo at its own brightness
               />
             </mesh>
             {name && (
@@ -351,6 +365,10 @@ export default function Band({
             />
             {/* @ts-expect-error geometry/map are not declared? */}
             <mesh geometry={nodes.clamp.geometry} material={materials.metal} />
+            <mesh position={RIVET_POSITION} scale={[1, 1, 0.75]}>
+              <sphereGeometry args={[0.017, 32, 16]} />
+              <meshStandardMaterial color="#e4e4e4" metalness={0.7} roughness={0.3} />
+            </mesh>
           </group>
         </RigidBody>
       </group>

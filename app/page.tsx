@@ -1,4 +1,5 @@
 "use client";
+import { NeutralToneMapping } from "three";
 import { Canvas } from "@react-three/fiber";
 import {
   useGLTF,
@@ -35,6 +36,8 @@ export default function Register() {
       <div className="flex h-screen w-full ">
         <Canvas
           camera={{ position: [0, 0, 13], fov: 25 }}
+          // keeps texture colors true; the default ACES washed out the card photo
+          gl={{ toneMapping: NeutralToneMapping }}
           style={{ backgroundColor: "transparent" }}
         >
           <ambientLight intensity={Math.PI} />
