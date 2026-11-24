@@ -63,13 +63,17 @@ const LOOP = [
       new THREE.Vector3(0, 1.3, 0.0282),
     ],
     false,
-    "centripetal"
+    "centripetal",
   ).getPoints(ATTACH - 2),
   new THREE.Vector3(0, 1.3 + RIVET_RUN, 0.0282),
 ];
 const LOOP_EXIT = new THREE.Vector3(0, 1.36 + RIVET_RUN, 0.0282); // band leaves the loop straight up
 // Rivet through both layers, centred between them so its dome shows on the front and back.
-const RIVET_POSITION = new THREE.Vector3(0, 1.3 + RIVET_RUN / 2, (0.0223 + 0.0282) / 2);
+const RIVET_POSITION = new THREE.Vector3(
+  0,
+  1.3 + RIVET_RUN / 2,
+  (0.0223 + 0.0282) / 2,
+);
 // Spot across tag_texture.png's width (0 = left edge, 1 = right edge) that sits under the rivet:
 // the middle of its blank gap, so the rivet isn't punched through the print.
 const PRINT_GAP = 0.75;
@@ -77,10 +81,14 @@ const PRINT_GAP = 0.75;
 // Vertices per sample: [corner, normal from face (0) or side (1), normal sign, v]. Corners are
 // front-left, front-right, back-left, back-right; back face v is flipped so its print reads right.
 const LAYOUT = [
-  [0, 0, 1, 0], [1, 0, 1, 1], // front face
-  [2, 0, -1, 1], [3, 0, -1, 0], // back face
-  [0, 1, -1, 0], [2, 1, -1, 0], // left edge
-  [1, 1, 1, 1], [3, 1, 1, 1], // right edge
+  [0, 0, 1, 0],
+  [1, 0, 1, 1], // front face
+  [2, 0, -1, 1],
+  [3, 0, -1, 0], // back face
+  [0, 1, -1, 0],
+  [2, 1, -1, 0], // left edge
+  [1, 1, 1, 1],
+  [3, 1, 1, 1], // right edge
 ] as const;
 const points = Array.from({ length: SAMPLES }, () => new THREE.Vector3());
 const tangents = Array.from({ length: SAMPLES }, () => new THREE.Vector3());
@@ -95,17 +103,46 @@ const _n = new THREE.Vector3();
 function createRibbon() {
   const geometry = new THREE.BufferGeometry();
   const count = SAMPLES * LAYOUT.length;
-  geometry.setAttribute("position", new THREE.BufferAttribute(new Float32Array(count * 3), 3));
-  geometry.setAttribute("normal", new THREE.BufferAttribute(new Float32Array(count * 3), 3));
-  geometry.setAttribute("uv", new THREE.BufferAttribute(new Float32Array(count * 2), 2));
+  geometry.setAttribute(
+    "position",
+    new THREE.BufferAttribute(new Float32Array(count * 3), 3),
+  );
+  geometry.setAttribute(
+    "normal",
+    new THREE.BufferAttribute(new Float32Array(count * 3), 3),
+  );
+  geometry.setAttribute(
+    "uv",
+    new THREE.BufferAttribute(new Float32Array(count * 2), 2),
+  );
   const index: number[] = [];
   for (let a = 0; a < (SAMPLES - 1) * 8; a += 8) {
     const b = a + 8; // same vertex on the next sample
     index.push(
-      a, a + 1, b, a + 1, b + 1, b, // front
-      a + 2, b + 2, a + 3, a + 3, b + 2, b + 3, // back
-      a + 5, a + 4, b + 5, a + 4, b + 4, b + 5, // left edge
-      a + 6, a + 7, b + 6, a + 7, b + 7, b + 6 // right edge
+      a,
+      a + 1,
+      b,
+      a + 1,
+      b + 1,
+      b, // front
+      a + 2,
+      b + 2,
+      a + 3,
+      a + 3,
+      b + 2,
+      b + 3, // back
+      a + 5,
+      a + 4,
+      b + 5,
+      a + 4,
+      b + 4,
+      b + 5, // left edge
+      a + 6,
+      a + 7,
+      b + 6,
+      a + 7,
+      b + 7,
+      b + 6, // right edge
     );
   }
   geometry.setIndex(index);
@@ -123,33 +160,44 @@ function updateRibbon(
   geometry: THREE.BufferGeometry,
   curve: THREE.CatmullRomCurve3,
   model: THREE.Object3D,
-  prevTwist: number
+  prevTwist: number,
 ) {
   const last = SAMPLES - 1;
   cardX.set(1, 0, 0).applyQuaternion(model.getWorldQuaternion(_q)); // also updates matrixWorld
   curve.points[0].copy(LOOP[ATTACH]).applyMatrix4(model.matrixWorld);
   curve.points[1].copy(LOOP_EXIT).applyMatrix4(model.matrixWorld);
-  for (let i = 0; i < ATTACH; i++) points[i].copy(LOOP[i]).applyMatrix4(model.matrixWorld);
-  for (let i = ATTACH; i <= last; i++) curve.getPoint((i - ATTACH) / (last - ATTACH), points[i]);
+  for (let i = 0; i < ATTACH; i++)
+    points[i].copy(LOOP[i]).applyMatrix4(model.matrixWorld);
+  for (let i = ATTACH; i <= last; i++)
+    curve.getPoint((i - ATTACH) / (last - ATTACH), points[i]);
   for (let i = 0; i <= last; i++) {
-    tangents[i].subVectors(points[Math.min(i + 1, last)], points[Math.max(i - 1, 0)]).normalize();
-    lengths[i] = i === 0 ? 0 : lengths[i - 1] + points[i].distanceTo(points[i - 1]);
+    tangents[i]
+      .subVectors(points[Math.min(i + 1, last)], points[Math.max(i - 1, 0)])
+      .normalize();
+    lengths[i] =
+      i === 0 ? 0 : lengths[i - 1] + points[i].distanceTo(points[i - 1]);
   }
 
   sides[last].crossVectors(tangents[last], TOWARD_CAMERA).normalize();
   for (let i = last - 1; i >= ATTACH; i--)
-    sides[i].copy(sides[i + 1]).applyQuaternion(_q.setFromUnitVectors(tangents[i + 1], tangents[i]));
+    sides[i]
+      .copy(sides[i + 1])
+      .applyQuaternion(_q.setFromUnitVectors(tangents[i + 1], tangents[i]));
 
   let twist = prevTwist;
   _v.copy(cardX).projectOnPlane(tangents[ATTACH]);
   if (_v.lengthSq() > 1e-6) {
     // (skipped for the instant the band runs exactly along the card's X axis)
-    const s = sides[ATTACH], t = tangents[ATTACH];
+    const s = sides[ATTACH],
+      t = tangents[ATTACH];
     const raw = Math.atan2(_n.crossVectors(s, _v).dot(t), s.dot(_v));
     twist = raw + 2 * Math.PI * Math.round((prevTwist - raw) / (2 * Math.PI));
   }
   for (let i = ATTACH; i <= last; i++)
-    sides[i].applyAxisAngle(tangents[i], twist * (1 - (i - ATTACH) / (last - ATTACH)));
+    sides[i].applyAxisAngle(
+      tangents[i],
+      twist * (1 - (i - ATTACH) / (last - ATTACH)),
+    );
   for (let i = 0; i < ATTACH; i++) sides[i].copy(cardX); // the loop is rigid with the card
 
   const rivetAt = (lengths[ATTACH - 1] + lengths[ATTACH]) / 2; // rivet is midway up the flat run
@@ -157,7 +205,8 @@ function updateRibbon(
   const normal = geometry.getAttribute("normal") as THREE.BufferAttribute;
   const uv = geometry.getAttribute("uv") as THREE.BufferAttribute;
   for (let i = 0; i <= last; i++) {
-    const p = points[i], side = sides[i];
+    const p = points[i],
+      side = sides[i];
     _n.crossVectors(side, tangents[i]).normalize();
     for (let c = 0; c < 4; c++)
       corners[c]
@@ -220,8 +269,8 @@ export default function Band({
           new THREE.Vector3(),
         ],
         false,
-        "chordal"
-      )
+        "chordal",
+      ),
   );
 
   useRopeJoint(fixed, j1, [[0, 0, 0], [0, 0, 0], 1]);
@@ -272,12 +321,12 @@ export default function Band({
 
           const clampedDistance = Math.max(
             0.1,
-            Math.min(1, lerped.distanceTo(ref.current.translation()))
+            Math.min(1, lerped.distanceTo(ref.current.translation())),
           );
 
           return lerped.lerp(
             ref.current.translation(),
-            delta * (minSpeed + clampedDistance * (maxSpeed - minSpeed))
+            delta * (minSpeed + clampedDistance * (maxSpeed - minSpeed)),
           );
         }
       });
@@ -331,7 +380,7 @@ export default function Band({
                   new THREE.Vector3()
                     .copy(e.point)
                     .sub(card.current.translation())
-                    .applyQuaternion(_q.copy(card.current.rotation()).invert())
+                    .applyQuaternion(_q.copy(card.current.rotation()).invert()),
                 )
             )}
           >
@@ -347,11 +396,16 @@ export default function Band({
             </mesh>
             {name && (
               <Text
-                position={[-0.30, 0.10, 0.01]}
+                position={[0, 0.1, 0.01]} // centred, on the crossed forearms
                 fontSize={0.06}
                 color="white"
-                anchorX="left"
-                anchorY="bottom"
+                // soft dark halo so the name stays readable over the bright parts of the photo
+                outlineWidth="6%"
+                outlineBlur="30%"
+                outlineColor="black"
+                outlineOpacity={0.55}
+                anchorX="center"
+                anchorY="middle"
                 font="https://fonts.gstatic.com/s/inter/v20/UcCO3FwrK3iLTeHuS_nVMrMxCp50SjIw2boKoduKmMEVuFuYMZg.ttf"
               >
                 {name}
@@ -367,7 +421,11 @@ export default function Band({
             <mesh geometry={nodes.clamp.geometry} material={materials.metal} />
             <mesh position={RIVET_POSITION} scale={[1, 1, 0.75]}>
               <sphereGeometry args={[0.017, 32, 16]} />
-              <meshStandardMaterial color="#e4e4e4" metalness={0.7} roughness={0.3} />
+              <meshStandardMaterial
+                color="#e4e4e4"
+                metalness={0.7}
+                roughness={0.3}
+              />
             </mesh>
           </group>
         </RigidBody>
